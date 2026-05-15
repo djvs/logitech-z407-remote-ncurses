@@ -87,12 +87,19 @@ class Z407App:
         self.device = None
         self.connected = False
         self.logs = []
+        self.keycode_logs = []
         self.lock = asyncio.Lock()
 
     def log(self, msg):
         self.logs.append(msg)
         if len(self.logs) > 500:
             self.logs = self.logs[-500:]
+        self.redraw()
+
+    def log_keycode(self, msg):
+        self.keycode_logs.append(msg)
+        if len(self.keycode_logs) > 500:
+            self.keycode_logs = self.keycode_logs[-500:]
         self.redraw()
 
     def redraw(self):
@@ -106,38 +113,65 @@ class Z407App:
         self.stdscr.addstr(
             0,
             0,
-            header[:w - 1]
+            header[:w - 1],
+            curses.color_pair(4)
         )
 
         help_line = (
-            "+/- vol  | "
-            "[] bass  | "
-            "space play  | "
-            "n/p next prev  | "
-            "b/a/u input  | "
-            "P pair  | "
-            "R reset  | "
+            "+/- vol  |  "
+            "[ ] bass  |  "
+            "space play  |  "
+            "n/p next prev  |  "
+            "b bluetooth input  |  "
+            "a aux input  |  "
+            "u usb input  |  "
+            "P pair  |  "
+            "R reset  |  "
             "q quit"
         )
 
         self.stdscr.addstr(
             1,
             0,
-            help_line[:w - 1]
+            help_line[:w - 1],
+            curses.color_pair(1)
         )
 
-        start = max( 0, len(self.logs) - (h - 3))
+        split = int(w * 0.3)
+        left_w = split
+        right_w = w - split - 1  # -1 for divider
 
-        visible = self.logs[start:]
+        # vertical divider
+        for y in range(2, h):
+            self.stdscr.addstr(y, split, "|", curses.color_pair(4))
 
-        for idx, line in enumerate(visible):
+        # left column (logs)
+        start_logs = max(0, len(self.logs) - (h - 3))
+        visible_logs = self.logs[start_logs:]
+
+        for idx, line in enumerate(visible_logs):
             y = idx + 3
             if y >= h:
                 break
             self.stdscr.addstr(
                 y,
                 0,
-                line[:w - 1]
+                line[:left_w - 1]
+            )
+
+        # right column (keycodes)
+        start_keys = max(0, len(self.keycode_logs) - (h - 3))
+        visible_keys = self.keycode_logs[start_keys:]
+
+        for idx, line in enumerate(visible_keys):
+            y = idx + 3
+            if y >= h:
+                break
+            self.stdscr.addstr(
+                y,
+                split + 2,
+                line[:right_w - 1],
+                curses.color_pair(3)
             )
 
         self.stdscr.refresh()
@@ -315,7 +349,7 @@ class Z407App:
                     break
                 cmd = KEYBINDS.get(key)
                 if cmd:
-                    self.log(cmd)
+                    self.log_keycode(cmd)
 
                     await self.send(cmd)
             await asyncio.sleep(0.01)
@@ -328,6 +362,14 @@ class Z407App:
 
 # main
 async def async_main(stdscr):
+
+    curses.start_color()
+    curses.use_default_colors()
+    curses.init_pair(1, curses.COLOR_RED, -1)
+    curses.init_pair(2, curses.COLOR_GREEN, -1)
+    curses.init_pair(3, curses.COLOR_WHITE, -1)
+    curses.init_pair(4, curses.COLOR_BLUE, -1)
+    stdscr.bkgd(' ', curses.color_pair(2))
     app = Z407App(stdscr)
 
     await app.loop()
