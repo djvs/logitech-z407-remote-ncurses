@@ -7,14 +7,14 @@ import asyncio
 import curses
 import traceback
 
-from bleak import BleakClient, BleakGATTCharacteristic
+from bleak import BleakClient, BleakScanner, BleakGATTCharacteristic
 
 
 debug_val = os.getenv("DEBUG")
 
 
 # Z407
-Z407_ADDRESS = "D3:81:93:E9:DA:7A"
+SERVICE_UUID = "0000fdc2-0000-1000-8000-00805f9b34fb"
 COMMAND_UUID = "c2e758b9-0e78-41e0-b0cb-98a593193fc5"
 RESPONSE_UUID = "b84ac9c6-29c5-46d4-bba1-9d534784330f"
 
@@ -82,6 +82,7 @@ class Z407App:
         self.stdscr = stdscr
 
         self.client = None
+        self.device = None
         self.connected = False
 
         self.logs = []
@@ -190,6 +191,44 @@ class Z407App:
 
         self.stdscr.refresh()
 
+    async def discover(self):
+        self.log("Scanning for Z407...")
+
+        scanner = BleakScanner()
+
+        try:
+            await scanner.start()
+
+            await asyncio.sleep(5.0)
+
+            for device, advertisement in (
+                scanner.discovered_devices_and_advertisement_data.values()
+            ):
+                service_uuids = [
+                    uuid.lower()
+                    for uuid in advertisement.service_uuids
+                ]
+
+                if SERVICE_UUID in service_uuids:
+                    self.log(f"Z407 found: {device.address}")
+                    return device
+
+        except Exception as e:
+            self.log(f"SCAN ERROR: {e}")
+
+            if debug_val:
+                self.log(traceback.format_exc())
+
+        finally:
+            try:
+                await scanner.stop()
+            except Exception:
+                pass
+
+        self.log("Z407 not found")
+
+        return None
+
     async def notification_handler(
         self,
         sender: BleakGATTCharacteristic,
@@ -217,7 +256,14 @@ class Z407App:
             self.connected = False
 
             try:
-                self.log(f"Connecting to {Z407_ADDRESS}...")
+                # find the Z407
+                if not self.device:
+                    self.device = await self.discover()
+
+                if not self.device:
+                    return False
+
+                self.log(f"Connecting to {self.device.address}...")
 
                 # clean up an old client if one exists
                 if self.client:
@@ -227,7 +273,7 @@ class Z407App:
                     except Exception:
                         pass
 
-                self.client = BleakClient(Z407_ADDRESS)
+                self.client = BleakClient(self.device)
 
                 await self.client.connect()
 
@@ -254,6 +300,7 @@ class Z407App:
 
             except Exception as e:
                 self.connected = False
+                self.device = None
 
                 self.log(f"CONNECT ERROR: {e}")
 
@@ -290,6 +337,8 @@ class Z407App:
 
         except Exception as e:
             self.connected = False
+            self.device = None
+
             self.log(f"SEND ERROR: {e}")
 
     async def reconnect_loop(self):

@@ -7,14 +7,14 @@ Z407_SERVICE_UUID = "0000fdc2-0000-1000-8000-00805f9b34fb"
 
 async def main():
     print("Scanning for Z407...")
-    print("Scanning for 10 seconds...\n")
+    print("Scanning for 1 second...\n")
 
     scanner = BleakScanner()
 
     await scanner.start()
 
     try:
-        await asyncio.sleep(10)
+        await asyncio.sleep(1)
     finally:
         try:
             await scanner.stop()
